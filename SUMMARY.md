@@ -1,3 +1,4 @@
 # Table of contents
 
-* [Page](README.md)
+* [Overall Harness](README.md)
+* [Guardrails](guardrails.md)
