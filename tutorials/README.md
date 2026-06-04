@@ -81,13 +81,13 @@ The notebook does not try to prove the whole harness with one artificial test. I
 
 | Observation | What students should notice | Harness surface |
 | --- | --- | --- |
-| Raw LLM smoke probe returns `COURSE_OK` or `OLLAMA_OK` | The selected model route and auth work on a small prompt. | Model route |
+| Raw LLM smoke probe returns the requested token, or a close-but-not-exact token on a small local model | The selected model route and auth work on a small prompt. Exact instruction following is a separate model-quality signal. | Model route |
 | Raw infer asks about `notes.txt` but the marker is not in the prompt | The model only receives explicit input; it was not given the file content. | Context surface |
 | The notebook prints workspace files before copying/running | Workspace artifacts are concrete files, not vague prompt magic. | Workspace surface / observability |
-| Full agent turn asks to read `notes.txt` | The runtime may mediate workspace access for the agent turn. | Workspace surface / action boundary |
+| DeepSeek full agent turn asks to read `notes.txt` and returns the marker | The runtime can mediate workspace access in the harnessed agent turn. | Workspace surface / action boundary |
+| Ollama full agent turn returns the marker, misses it, emits tool-like text, or becomes slow | The same harness workload can expose model, context, and runtime-capacity limits under a small local backend. | Model route / context budget / runtime capacity |
 | Output includes `[agents/tool-policy] tool policy removed...` | The action space is shaped by runtime policy before the model acts. | Policy surface / action boundary |
 | A fresh `--session-key` changes what history is available | The turn is isolated from stale transcript state. | Session surface |
-| Ollama probe works but full turn is slow or odd | A full harnessed turn is a heavier workload than a raw model probe. | Model route / context budget |
 
 The `notes.txt` marker is only a controlled fixture:
 
@@ -109,7 +109,7 @@ DeepSeek and Ollama are observation paths, not mandatory requirements. DeepSeek 
 
 **Tip:** You can replace the model route. DeepSeek is only the default hosted API example. If you have another configured API provider, you can use that instead. The Ollama lane is also not tied to `llama3.2:3b`; choose a model your runtime can handle. A local or self-hosted backend such as vLLM or SGLang can also be used if it is exposed through an OpenAI-compatible or otherwise configured OpenClaw route.
 
-A few runtime tips: if DeepSeek asks for a key, skip that lane unless you have one. If Ollama cannot connect, restart the Ollama setup cell. If Ollama passes the smoke probe but stalls in the full agent turn, record that as a workload observation rather than a broken lab.
+A few runtime tips: if DeepSeek asks for a key, skip that lane unless you have one. If Ollama cannot connect, restart the Ollama setup cell. If you use a Colab T4, a quantized 7B or 8B Ollama model is a reasonable next experiment after `llama3.2:3b`; a 14B model may fit only with tighter memory and slower full-agent behavior. If Ollama passes the smoke probe but stalls or gives off-task output in the full agent turn, record that as a workload observation rather than a broken lab.
 
 ## Observation -> Harness Surface
 
@@ -123,7 +123,8 @@ Use this table after running or reading the notebook output.
 | Agent cannot use or see a tool | Tool surface / policy surface |
 | Tool-policy diagnostic removes tools | Policy surface |
 | Old behavior appears after you changed files | Session surface / stale transcript |
-| Local model is slow or produces odd output | Model route / context budget |
+| Ollama smoke output is close but not exact | Model route works; instruction following is weak |
+| Local model is slow, misses the marker, or produces tool-like output | Model route / context budget / runtime capacity |
 | You cannot tell what happened | Observability surface |
 
 This is the habit behind Harness Engineering: when behavior changes, identify which surface to inspect or improve. Do not jump straight to “the model is bad” or “try again.”
@@ -173,6 +174,9 @@ Harness Engineering is the practice of shaping that boundary: what the model see
 * [OpenClaw DeepSeek Provider](https://docs.openclaw.ai/providers/deepseek)
 * [OpenClaw Ollama Provider](https://docs.openclaw.ai/providers/ollama)
 * [OpenClaw Docker](https://docs.openclaw.ai/install/docker)
+* [Ollama Library](https://ollama.com/library)
+* [Ollama qwen2.5-coder](https://ollama.com/library/qwen2.5-coder)
+* [Ollama Llama 3.1](https://ollama.com/library/llama3.1)
 * [vLLM OpenAI-Compatible Server](https://docs.vllm.ai/serving/openai_compatible_server.html)
 * [SGLang OpenAI-Compatible API](https://sgl-project-sglang-93.mintlify.app/backend/openai-compatible-api)
 * [Google Colab FAQ](https://research.google.com/colaboratory/faq.html)
