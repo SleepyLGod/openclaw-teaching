@@ -5,3 +5,4 @@ A model produces text.
 A runtime or harness executes the prepared agent turn.
 The agent loop is the sequence executed by the runtime.
 Constraints such as tool policy and sandboxing are studied later in Guardrails.
+Workspace marker: HARNESS_CONTEXT_VISIBLE

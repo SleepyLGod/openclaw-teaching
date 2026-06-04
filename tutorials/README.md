@@ -21,151 +21,159 @@ layout:
 
 # Overall Harness
 
-In this lab, you will use OpenClaw itself to see how a raw model becomes a full agent turn.
+This lab shows what changes when an LLM is placed inside an agent harness.
 
-The point is not to learn every OpenClaw feature. The point is to learn the boundary between a model, a provider, a runtime, and the execution constraints around an agent.
+A raw LLM call sends explicit input to a model and receives text. A harnessed agent turn surrounds the model with a runtime: prompt context, workspace access, tool surface, policy, session state, and observable output. The point is not that the model becomes more powerful. The point is that the system decides what the model can see, what it can ask the runtime to do, and how the turn is recorded and improved.
 
-## The question
+In this chapter, **Harness Engineering** means the system practice around agents: designing context, action boundaries, workflow/session control, observability, and feedback loops so an agent behaves reliably. OpenClaw gives us a real system where these surfaces are visible.
 
-A chat model can answer text. An agent system needs more than that.
+## What To Learn
 
-When you ask an agent to answer a question about a workspace file, the system has to decide:
+By the end of this lab, you should be able to explain:
 
-* which model provider to call;
-* which model to use;
-* which session history to include;
-* which workspace files and bootstrap instructions to load;
-* which tools are visible;
-* which tool calls are allowed;
-* where the transcript is persisted.
+* why a working model route is not the same as a working agent;
+* which inputs and controls surround an OpenClaw agent turn;
+* how workspace, tool policy, and session state appear in observable output;
+* how to map a changed behavior to the harness surface you would inspect first.
 
-## The path you will observe
+## Mental Model
 
-```text
-Colab notebook
-  -> OpenClaw CLI
-  -> provider/model
-  -> runtime/harness
-  -> workspace + context + tools + session
-  -> reply + transcript
+```mermaid
+flowchart LR
+    A["Task"] --> B["OpenClaw CLI"]
+    B --> C{"Path"}
+    C -->|infer model run| D["Raw LLM call"]
+    C -->|agent --local| E["Harnessed agent turn"]
+    E --> F["Context"]
+    E --> G["Workspace"]
+    E --> H["Tool surface + policy"]
+    E --> I["Session"]
+    F --> J["Model call"]
+    G --> J
+    H --> J
+    I --> J
+    J --> K["Reply + transcript"]
 ```
 
-The notebook prints each command before running it and labels what that command is supposed to prove. Treat the output as a white-box observation of which layer is active.
+`infer model run` is the narrow path. It checks the selected model route and auth on the prompt you pass. It does not start a chat-agent turn, load tools, include prior session transcript, or assemble workspace/bootstrap context.
 
-OpenClaw calls the implementation that provides an agent runtime a **harness**. The harness is not the loop itself. The loop is the sequence the runtime executes. Constraints are also not the harness. They are policies and boundaries the runtime has to respect.
+`agent --local` is the harnessed path. OpenClaw prepares an agent turn, selects the runtime, assembles prompt context, exposes a tool surface, applies policy, mediates workspace access, and persists the transcript.
 
-```text
-user message
-  -> provider/model selection
-  -> runtime/harness
-  -> context assembly
-  -> model inference
-  -> optional tool calls
-  -> final reply
-  -> session transcript
-```
+OpenClaw documentation also uses **agent harness** as a narrower implementation term: the low-level component behind an agent runtime. This course uses the broader Harness Engineering sense, and OpenClaw's runtime/harness is one concrete place where those ideas show up.
 
-## What counts as the harness?
+## Terms
 
-Use this table while you run the notebook.
+| Term | What it means in this lab |
+| --- | --- |
+| Model route | The configured access path to a model. DeepSeek is a hosted API example; Ollama is a local model server example; vLLM/SGLang can be self-hosted backend examples if configured. |
+| Raw LLM call | A one-shot call through `openclaw infer model run`. It receives only the prompt and explicit inputs passed to that command. |
+| Harnessed agent turn | A turn run through `openclaw agent --local`, where OpenClaw prepares context, workspace access, tools, policy, and session state. |
+| Context surface | The prompt package assembled for the model: instructions, user message, session history, tool schemas, and workspace-derived content. |
+| Workspace surface | Files the runtime can make available to the agent turn. In this lab, `AGENTS.md`, `SOUL.md`, `USER.md`, and `notes.txt` are controlled workspace fixtures. |
+| Action boundary | The line between model text and runtime-mediated actions. The model does not directly own files, tools, session history, or side effects. |
+| Policy surface | Concrete controls such as tool policy, sandboxing, permissions, and context budget. This lab previews them; Guardrails studies them directly. |
+| Session surface | The transcript/history selected by `--session-key`. A fresh key helps isolate observations from stale history. |
+| Observability surface | The command output, diagnostics, file contents, and transcripts you inspect to understand what happened. |
 
-| Layer | Meaning in this lab | Is it the harness? |
+## Observation Path
+
+The notebook does not try to prove the whole harness with one artificial test. Instead, it makes several harness surfaces visible with small observations.
+
+| Observation | What students should notice | Harness surface |
 | --- | --- | --- |
-| Provider | The service or backend that serves models, such as DeepSeek or Ollama. | No |
-| Model | The selected model reference. | No |
-| Runtime / harness | The implementation that executes a prepared agent turn. | Yes |
-| Agent loop | The flow executed by the runtime. | No |
-| Context | The prompt, history, tools, and workspace-derived content sent into the turn. | No |
-| Workspace | Files and bootstrap instructions the agent can use. | No |
-| Constraints | Tool policy, permissions, sandbox, and context limits. | No, but the runtime touches them |
+| Raw LLM smoke probe returns `COURSE_OK` or `OLLAMA_OK` | The selected model route and auth work on a small prompt. | Model route |
+| Raw infer asks about `notes.txt` but the marker is not in the prompt | The model only receives explicit input; it was not given the file content. | Context surface |
+| The notebook prints workspace files before copying/running | Workspace artifacts are concrete files, not vague prompt magic. | Workspace surface / observability |
+| Full agent turn asks to read `notes.txt` | The runtime may mediate workspace access for the agent turn. | Workspace surface / action boundary |
+| Output includes `[agents/tool-policy] tool policy removed...` | The action space is shaped by runtime policy before the model acts. | Policy surface / action boundary |
+| A fresh `--session-key` changes what history is available | The turn is isolated from stale transcript state. | Session surface |
+| Ollama probe works but full turn is slow or odd | A full harnessed turn is a heavier workload than a raw model probe. | Model route / context budget |
 
-In this first chapter we only touch constraints lightly. Guardrails get their own chapter.
+The `notes.txt` marker is only a controlled fixture:
 
-## Open the Colab lab
+```text
+Workspace marker: HARNESS_CONTEXT_VISIBLE
+```
+
+It is not a test of whether the model can magically inspect files. If you paste the marker directly into a raw prompt, the model can repeat it. If you do not pass the file content, the raw LLM call should not know it. In the harnessed turn, the runtime may make the workspace content available through the agent workflow.
+
+The teaching point is: **the harness controls input construction and action mediation**.
+
+## Open The Notebook
 
 Open the runnable notebook:
 
 [Open in Colab](https://colab.research.google.com/github/SleepyLGod/openclaw-teaching/blob/main/labs/overall-harness/openclaw_overall_harness.ipynb)
 
-The notebook has two paths:
+DeepSeek and Ollama are observation paths, not mandatory requirements. DeepSeek needs a student-owned API key and may cost money. Ollama needs enough Colab or local compute for the chosen model. The notebook gives the operational details near each lane.
 
-* **DeepSeek API path**: the stable path for a live demo. It uses `DEEPSEEK_API_KEY`.
-* **Ollama path**: the free local-model path inside Colab. It may be slower or less stable on small models.
+**Tip:** You can replace the model route. DeepSeek is only the default hosted API example. If you have another configured API provider, you can use that instead. The Ollama lane is also not tied to `llama3.2:3b`; choose a model your runtime can handle. A local or self-hosted backend such as vLLM or SGLang can also be used if it is exposed through an OpenAI-compatible or otherwise configured OpenClaw route.
 
-Both paths use OpenClaw. There is no custom toy agent loop in this lab.
+A few runtime tips: if DeepSeek asks for a key, skip that lane unless you have one. If Ollama cannot connect, restart the Ollama setup cell. If Ollama passes the smoke probe but stalls in the full agent turn, record that as a workload observation rather than a broken lab.
 
-This chapter intentionally does not teach full Guardrails, Eval, Multi-Agent, or Skills. It only introduces the overall runtime boundary those later chapters build on.
+## Observation -> Harness Surface
 
-## What you should see
+Use this table after running or reading the notebook output.
 
-| Step | What it proves |
+| If you observe... | First place to look |
 | --- | --- |
-| `openclaw --version` | OpenClaw CLI exists in the Colab runtime. |
-| `openclaw models list` | The selected provider can be inspected. |
-| `openclaw infer model run` | The provider/model path works. |
-| `openclaw agent --local` | A full runtime/harness turn can run. |
-| Fresh `--session-key` | The observation is not hidden by stale session history. |
+| API auth or model listing fails | Model route |
+| Raw LLM call gives a different answer than expected | Prompt text / explicit input |
+| Full agent turn ignores `AGENTS.md` or `SOUL.md` | Context surface / workspace setup |
+| Agent cannot use or see a tool | Tool surface / policy surface |
+| Tool-policy diagnostic removes tools | Policy surface |
+| Old behavior appears after you changed files | Session surface / stale transcript |
+| Local model is slow or produces odd output | Model route / context budget |
+| You cannot tell what happened | Observability surface |
 
-## Experiment 1: model probe
+This is the habit behind Harness Engineering: when behavior changes, identify which surface to inspect or improve. Do not jump straight to “the model is bad” or “try again.”
 
-The first command is a provider/model probe.
+## Colab Runtime Safety
 
-```bash
-openclaw infer model run --local --model <model-ref> --prompt "Reply exactly: COURSE_OK" --json
-```
+Each user gets their own Colab runtime when opening the notebook link. Your API key, `/content`, Ollama process, and `~/.openclaw` config are not shared through GitBook or GitHub.
 
-This checks whether OpenClaw can reach the selected model. It does not prove that a full agent turn will work.
+If you use the same Google account in multiple browsers, Colab may reconnect to your own active runtime. Before sharing screenshots or committing notebook changes, clear outputs and avoid printing secrets.
 
-A model probe does not need the same amount of context, tool schema, workspace state, or session handling as an agent turn.
-
-## Experiment 2: full agent turn
-
-The second command runs through the OpenClaw agent runtime.
-
-```bash
-openclaw agent --local --session-key harness-demo \
-  --message "Read notes.txt and answer in one sentence: what does this lab teach?"
-```
-
-This is the key comparison.
-
-`infer model run` checks the model path. `agent --local` uses the runtime/harness to assemble context, session state, workspace instructions, and tool surface.
-
-## Experiment 3: change the workspace
-
-The notebook copies these files into the OpenClaw workspace:
+For a clean environment, use one of these Colab actions:
 
 ```text
-SOUL.md
-USER.md
-AGENTS.md
-notes.txt
+Runtime -> Disconnect and delete runtime
+Runtime -> Factory reset runtime
 ```
 
-Then it uses a fresh session key and asks the agent to describe its role.
+## Discussion Questions
 
-A fresh session matters because session history can hide what changed. If you change bootstrap files, use a new session key when you want a clean observation.
+1. Which command was only a raw LLM call?
+2. Which command ran a harnessed agent turn?
+3. What exact input did the raw LLM call receive?
+4. Which workspace files shaped the full agent response?
+5. What did the tool-policy line show about the action boundary?
+6. Why can a model smoke probe pass while `agent --local` is slow or unstable?
+7. Which observation maps to context, workspace, policy, session, or model route?
+8. Which surfaces should be saved for deeper Guardrails, Eval, Multi-Agent, or Skills chapters?
 
-## What to observe
+## Key Takeaway
 
-While running the notebook, answer these questions.
+An LLM call returns text from explicit input. A harnessed agent turn runs inside a system boundary.
 
-1. Which command is only a provider/model smoke test?
-2. Which command runs a full agent turn?
-3. Which provider did you use: DeepSeek or Ollama?
-4. Which model did you use?
-5. Which workspace files affected the answer?
-6. Why can `infer model run` succeed while `agent --local` fails?
-7. Which parts are harness/runtime concerns, and which parts are guardrails that we will study later?
+Harness Engineering is the practice of shaping that boundary: what the model sees, what actions are mediated, how workflow state is tracked, how behavior is observed, and where the system should be improved when behavior changes.
 
-## Analysis
+## References
 
-The harness is the runtime implementation that turns a prepared prompt and model choice into an agent turn. It is not the same thing as the loop, the prompt, or the policy layer.
-
-The first principle is simple:
-
-> A model returns text. A harness runs an agent turn.
-
-OpenClaw makes this visible because you can run a narrow model probe and then run a full agent turn against the same backend.
-
-That difference is the foundation for the next chapters: Guardrails, Eval, and Multi-Agent.
+* [OpenAI Harness Engineering](https://openai.com/index/harness-engineering/)
+* [Martin Fowler: Harness engineering for coding agent users](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html)
+* [OpenClaw Agent Runtimes](https://docs.openclaw.ai/concepts/agent-runtimes)
+* [OpenClaw Agent Harness Plugins](https://docs.openclaw.ai/plugins/sdk-agent-harness)
+* [OpenClaw Agent Loop](https://docs.openclaw.ai/concepts/agent-loop)
+* [OpenClaw Context](https://docs.openclaw.ai/context/)
+* [OpenClaw Agent CLI](https://docs.openclaw.ai/cli/agent)
+* [OpenClaw Infer CLI](https://docs.openclaw.ai/cli/infer)
+* [OpenClaw Models CLI](https://docs.openclaw.ai/cli/models)
+* [OpenClaw Provider Plugins](https://docs.openclaw.ai/plugins/sdk-provider-plugins)
+* [OpenClaw DeepSeek Provider](https://docs.openclaw.ai/providers/deepseek)
+* [OpenClaw Ollama Provider](https://docs.openclaw.ai/providers/ollama)
+* [OpenClaw Docker](https://docs.openclaw.ai/install/docker)
+* [vLLM OpenAI-Compatible Server](https://docs.vllm.ai/serving/openai_compatible_server.html)
+* [SGLang OpenAI-Compatible API](https://sgl-project-sglang-93.mintlify.app/backend/openai-compatible-api)
+* [Google Colab FAQ](https://research.google.com/colaboratory/faq.html)
+* [GitBook Mermaid Troubleshooting](https://gitbook.com/docs/help-center/integrations/existing-integrations/why-is-the-mermaid-block-not-loading)
