@@ -1,8 +1,7 @@
 OpenClaw Overall Harness Lab
-This lab teaches how a raw model becomes a full agent turn.
-A provider serves models.
-A model produces text.
-A runtime or harness executes the prepared agent turn.
-The agent loop is the sequence executed by the runtime.
-Constraints such as tool policy and sandboxing are studied later in Guardrails.
+This file is a controlled workspace fixture for observing harness surfaces.
+The runtime may use workspace files as part of a harnessed agent turn.
+The raw LLM call will not see this file unless its content is explicitly passed in the prompt.
+Use this fixture to discuss context surface, workspace surface, and action boundary.
+Tool policy and sandboxing are policy surfaces previewed here and studied later in Guardrails.
 Workspace marker: HARNESS_CONTEXT_VISIBLE
