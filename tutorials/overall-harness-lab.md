@@ -21,63 +21,13 @@ layout:
 
 # Overall Harness Lab
 
-Use this lab to run and interpret the A/B/C observation path for OpenClaw Overall Harness.
+This lab turns the overview into observable runs.
 
-A raw LLM call sends explicit input to a model and receives text. A harnessed agent turn surrounds the model with a runtime: prompt context, workspace access, tool surface, policy, session state, and observable output. The point is not that the model becomes more powerful. The point is that the system decides what the model can see, what it can ask the runtime to do, and how the turn is recorded and improved.
+Read [Overall Harness](README.md) first if these terms are new: raw LLM call, harnessed agent turn, model route, context surface, workspace surface, policy surface, and session surface.
 
-In this chapter, **Harness Engineering** means the system practice around agents: designing context, action boundaries, workflow/session control, observability, and feedback loops so an agent behaves reliably. OpenClaw gives us a real system where these surfaces are visible.
-
-## What To Learn
-
-By the end of this lab, you should be able to explain:
-
-* why a working model route is not the same as a working agent;
-* which inputs and controls surround an OpenClaw agent turn;
-* how workspace, tool policy, and session state appear in observable output;
-* how to map a changed behavior to the harness surface you would inspect first.
-
-## Mental Model
-
-```mermaid
-flowchart LR
-    A["Task"] --> B["OpenClaw CLI"]
-    B --> C{"Path"}
-    C -->|infer model run| D["Raw LLM call"]
-    C -->|agent --local| E["Harnessed agent turn"]
-    E --> F["Context"]
-    E --> G["Workspace"]
-    E --> H["Tool surface + policy"]
-    E --> I["Session"]
-    F --> J["Model call"]
-    G --> J
-    H --> J
-    I --> J
-    J --> K["Reply + transcript"]
-```
-
-`infer model run` is the narrow path. It checks the selected model route and auth on the prompt you pass. It does not start a chat-agent turn, load tools, include prior session transcript, or assemble workspace/bootstrap context.
-
-`agent --local` is the harnessed path. OpenClaw prepares an agent turn, selects the runtime, assembles prompt context, exposes a tool surface, applies policy, mediates workspace access, and persists the transcript.
-
-OpenClaw documentation also uses **agent harness** as a narrower implementation term: the low-level component behind an agent runtime. This course uses the broader Harness Engineering sense, and OpenClaw's runtime/harness is one concrete place where those ideas show up.
-
-## Terms
-
-| Term | What it means in this lab |
-| --- | --- |
-| Model route | The configured access path to a model. DeepSeek is a hosted API example; Ollama is a local model server example; vLLM/SGLang can be self-hosted backend examples if configured. |
-| Raw LLM call | A one-shot call through `openclaw infer model run`. It receives only the prompt and explicit inputs passed to that command. |
-| Harnessed agent turn | A turn run through `openclaw agent --local`, where OpenClaw prepares context, workspace access, tools, policy, and session state. |
-| Context surface | The prompt package assembled for the model: instructions, user message, session history, tool schemas, and workspace-derived content. |
-| Workspace surface | Files the runtime can make available to the agent turn. In this lab, `AGENTS.md`, `SOUL.md`, `USER.md`, and `notes.txt` are controlled workspace fixtures. |
-| Action boundary | The line between model text and runtime-mediated actions. The model does not directly own files, tools, session history, or side effects. |
-| Policy surface | Concrete controls such as tool policy, sandboxing, permissions, and context budget. This lab previews them; Guardrails studies them directly. |
-| Session surface | The transcript/history selected by `--session-key`. A fresh key helps isolate observations from stale history. |
-| Observability surface | The command output, diagnostics, file contents, and transcripts you inspect to understand what happened. |
+The notebook compares three paths: a raw LLM call without workspace context, a raw LLM call with explicit `notes.txt` context, and a harnessed OpenClaw agent turn. The goal is to observe which part of the system constructs input and which part mediates workspace access.
 
 ## Observation Path
-
-The notebook uses an A/B/C comparison. It does not try to prove the whole harness with one artificial test. It shows which part of the system constructs input and which part mediates workspace access.
 
 | Step | Command path | What is passed to the model | Target observation | Harness surface |
 | --- | --- | --- | --- | --- |
@@ -87,21 +37,13 @@ The notebook uses an A/B/C comparison. It does not try to prove the whole harnes
 | Policy observation | `openclaw agent --local` output | Runtime-selected tool surface | Output may include `[agents/tool-policy] tool policy removed...` | Policy surface / action boundary |
 | Session observation | fresh `--session-key` | A selected transcript/history boundary | A fresh key helps isolate the turn from stale history | Session surface |
 
-In this lab, `notes.txt` is just a controlled workspace fixture with one marker:
+In this lab, `notes.txt` is a controlled workspace fixture with one marker:
 
 ```text
 Workspace marker: HARNESS_CONTEXT_VISIBLE
 ```
 
-### What This Comparison Proves
-
-It proves that a raw LLM call can answer only from explicit prompt input. If you paste `notes.txt` into the prompt, raw infer can answer the marker. If you do not, raw infer should not know it.
-
-It also shows what changes in a harnessed agent turn: the runtime can mediate workspace access, assemble context, expose tools, apply policy, and persist session state. The model did not gain a new capability; the system boundary changed.
-
-### What This Comparison Does Not Prove
-
-This comparison does not fully test Guardrails, Eval, Multi-Agent behavior, Skills, or long-term feedback loops. It only makes the overall harness surfaces visible before later chapters study each surface directly.
+This comparison is not a test of whether the model can magically inspect files. If you paste `notes.txt` into a raw prompt, the model can answer from it. If you do not pass the file content, the raw LLM call should not know it. In the harnessed turn, the runtime can mediate workspace access, assemble context, expose tools, apply policy, and persist session state.
 
 ## Open The Notebook
 
@@ -160,12 +102,6 @@ Runtime -> Factory reset runtime
 7. Which observation maps to context, workspace, policy, session, or model route?
 8. Pick one changed or surprising output. Which harness surface would you inspect or improve first, and what smallest change would you make?
 9. Which surfaces should be saved for deeper Guardrails, Eval, Multi-Agent, or Skills chapters?
-
-## Key Takeaway
-
-An LLM call returns text from explicit input. A harnessed agent turn runs inside a system boundary.
-
-Harness Engineering is the practice of shaping that boundary: what the model sees, what actions are mediated, how workflow state is tracked, how behavior is observed, and where the system should be improved when behavior changes.
 
 ## References
 
